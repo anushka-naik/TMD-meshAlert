@@ -1,0 +1,634 @@
+
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { io, Socket } from 'socket.io-client';
+import { Peer, MeshMessage, NetworkState, MapItem } from './mesh-types';
+import { toast } from 'sonner';
+
+interface MeshContextType {
+  socket: Socket | null;
+  me: Peer | null;
+  peers: Peer[];
+  ghostPeers: Peer[];
+  messages: MeshMessage[];
+  broadcast: (content: string, type?: MeshMessage['type'], metadata?: MeshMessage['metadata']) => void;
+  sendDirect: (to: string, content: string, replyTo?: { id: string, content: string }) => void;
+  verifyPeer: (id: string) => void;
+  isConnected: boolean;
+  ledgerIntegrity: boolean;
+  isStealthMode: boolean;
+  setStealthMode: (val: boolean) => void;
+  selectedMapItem: MapItem | null;
+  setSelectedMapItem: (item: MapItem | null) => void;
+}
+
+const MeshContext = createContext<MeshContextType | undefined>(undefined);
+
+const RANDOM_NAMES = ['Kestrel', 'Badger', 'Raven', 'Fox', 'Owl', 'Wolf', 'Bear', 'Lynx', 'Hawk', 'Otter'];
+const GENESIS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
+
+// Crypto Helpers
+const exportKey = async (key: CryptoKey) => {
+  const exported = await crypto.subtle.exportKey('jwk', key);
+  return btoa(JSON.stringify(exported));
+};
+
+const importKey = async (jwkB64: string, type: 'signing' | 'encryption' | 'aes', use: 'public' | 'private' | 'secret') => {
+  const jwk = JSON.parse(atob(jwkB64));
+  if (type === 'signing') {
+    return crypto.subtle.importKey(
+      'jwk', 
+      jwk, 
+      { name: 'ECDSA', namedCurve: 'P-256' }, 
+      true, 
+      use === 'public' ? ['verify'] : ['sign']
+    );
+  } else if (type === 'encryption') {
+    return crypto.subtle.importKey(
+      'jwk', 
+      jwk, 
+      { name: 'ECDH', namedCurve: 'P-256' }, 
+      true, 
+      use === 'public' ? [] : ['deriveKey']
+    );
+  } else {
+    return crypto.subtle.importKey(
+      'jwk',
+      jwk,
+      { name: 'AES-GCM' },
+      true,
+      ['encrypt', 'decrypt']
+    );
+  }
+};
+
+const hashMessage = async (msg: Partial<MeshMessage>): Promise<string> => {
+  const kernel = `${msg.senderId}|${msg.content}|${msg.timestamp}|${msg.prevHash}`;
+  const msgUint8 = new TextEncoder().encode(kernel);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+export const MeshProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [me, setMe] = useState<Peer | null>(() => {
+    const saved = localStorage.getItem('mesh_me');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [peers, setPeers] = useState<Peer[]>([]);
+  const [ghostPeers, setGhostPeers] = useState<Peer[]>([]);
+  const [messages, setMessages] = useState<MeshMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('mesh_ledger');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+      return [];
+    } catch (e) {
+      console.error("Critical: Failed to load mesh ledger from storage", e);
+      return [];
+    }
+  });
+  const [verifiedPeerIds, setVerifiedPeerIds] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('mesh_verified_peers');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  const [verifiedPeerKeys, setVerifiedPeerKeys] = useState<Record<string, { signingKey: string, encryptionKey: string }>>(() => {
+    const saved = localStorage.getItem('mesh_verified_peer_keys');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [isConnected, setIsConnected] = useState(false);
+  const [ledgerIntegrity, setLedgerIntegrity] = useState(true);
+  const [isStealthMode, setStealthMode] = useState(() => {
+    return localStorage.getItem('mesh_stealth') === 'true';
+  });
+  const [selectedMapItem, setSelectedMapItem] = useState<MapItem | null>(null);
+
+  // Tactical Key Store (In-memory, transient but loaded from storage)
+  const signingKeyPair = useRef<{ public: CryptoKey, private: CryptoKey } | null>(null);
+  const encryptionKeyPair = useRef<{ public: CryptoKey, private: CryptoKey } | null>(null);
+  const sharedSecrets = useRef<Map<string, CryptoKey>>(new Map());
+
+  // Persist Stealth Mode
+  useEffect(() => {
+    localStorage.setItem('mesh_stealth', isStealthMode.toString());
+  }, [isStealthMode]);
+
+  // Persist Ledger
+  useEffect(() => {
+    localStorage.setItem('mesh_ledger', JSON.stringify(messages));
+  }, [messages]);
+
+  // Persist Verified Peers
+  useEffect(() => {
+    localStorage.setItem('mesh_verified_peers', JSON.stringify(Array.from(verifiedPeerIds)));
+  }, [verifiedPeerIds]);
+
+  useEffect(() => {
+    localStorage.setItem('mesh_verified_peer_keys', JSON.stringify(verifiedPeerKeys));
+  }, [verifiedPeerKeys]);
+
+  // Initialize Me if not exists
+  useEffect(() => {
+    if (me) return;
+    
+    const myId = Math.random().toString(36).substr(2, 9);
+    const myName = `${RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)]}-${Math.floor(Math.random() * 1000)}`;
+    const myPeer: Peer = {
+      id: myId,
+      name: myName,
+      status: 'online',
+      battery: 80 + Math.floor(Math.random() * 20),
+      lastSeen: Date.now(),
+      location: { x: 30 + Math.random() * 40, y: 30 + Math.random() * 40 },
+      role: Math.random() > 0.8 ? 'coordinator' : 'node',
+      isVerified: true
+    };
+    setMe(myPeer);
+    localStorage.setItem('mesh_me', JSON.stringify(myPeer));
+  }, [me]);
+
+  // Handle Cryptographic Key Lifecycle
+  useEffect(() => {
+    const initCrypto = async () => {
+      let savedSig = localStorage.getItem('mesh_sig_keys');
+      let savedEnc = localStorage.getItem('mesh_enc_keys');
+
+      if (!savedSig || !savedEnc) {
+        toast.info("Generating Tactical Identity Keys...");
+        const sig = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+        const enc = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']);
+        
+        signingKeyPair.current = { public: sig.publicKey, private: sig.privateKey };
+        encryptionKeyPair.current = { public: enc.publicKey, private: enc.privateKey };
+
+        const sigPub = await exportKey(sig.publicKey);
+        const sigPriv = await exportKey(sig.privateKey);
+        const encPub = await exportKey(enc.publicKey);
+        const encPriv = await exportKey(enc.privateKey);
+
+        localStorage.setItem('mesh_sig_keys', JSON.stringify({ public: sigPub, private: sigPriv }));
+        localStorage.setItem('mesh_enc_keys', JSON.stringify({ public: encPub, private: encPriv }));
+        
+        // Update my own peer data with public keys
+        setMe(prev => prev ? { ...prev, signingKey: sigPub, encryptionKey: encPub } : null);
+      } else {
+        const sigData = JSON.parse(savedSig);
+        const encData = JSON.parse(savedEnc);
+        
+        signingKeyPair.current = {
+          public: await importKey(sigData.public, 'signing', 'public'),
+          private: await importKey(sigData.private, 'signing', 'private')
+        };
+        encryptionKeyPair.current = {
+          public: await importKey(encData.public, 'encryption', 'public'),
+          private: await importKey(encData.private, 'encryption', 'private')
+        };
+
+        // Re-derive shared secrets for all previously verified peers
+        for (const [id, keys] of Object.entries(verifiedPeerKeys) as [string, { signingKey: string, encryptionKey: string }][]) {
+          try {
+            const peerEncKey = await importKey(keys.encryptionKey, 'encryption', 'public');
+            const sharedSecret = await crypto.subtle.deriveKey(
+              { name: 'ECDH', public: peerEncKey },
+              encryptionKeyPair.current!.private,
+              { name: 'AES-GCM', length: 256 },
+              true,
+              ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey']
+            );
+            sharedSecrets.current.set(id, sharedSecret);
+          } catch (e) {
+            console.error(`Failed to restore secure channel for ${id}`, e);
+          }
+        }
+
+        // Ensure current "Me" has the correct keys linked
+        if (me && (!me.signingKey || !me.encryptionKey)) {
+          setMe(prev => prev ? { ...prev, signingKey: sigData.public, encryptionKey: encData.public } : null);
+        }
+      }
+    };
+    initCrypto();
+  }, []);
+
+  // Update battery level periodically
+  useEffect(() => {
+    if (!me) return;
+    const interval = setInterval(() => {
+      setMe(prev => {
+        if (!prev) return null;
+        return { ...prev, battery: Math.max(0, prev.battery - 0.01) };
+      });
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [me]);
+
+  // Persist Me changes (including battery)
+  useEffect(() => {
+    if (me) {
+      localStorage.setItem('mesh_me', JSON.stringify(me));
+    }
+  }, [me]);
+
+  // Socket and Mesh Logic - Stabilized to only reconnect if initial identity is lost or changes
+  const socketRef = useRef<Socket | null>(null);
+  const meRef = useRef<Peer | null>(me);
+  const peersRef = useRef<Peer[]>(peers);
+  const messagesRef = useRef<MeshMessage[]>(messages);
+  const verifiedPeerIdsRef = useRef<Set<string>>(verifiedPeerIds);
+
+  useEffect(() => { meRef.current = me; }, [me]);
+  useEffect(() => { peersRef.current = peers; }, [peers]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { verifiedPeerIdsRef.current = verifiedPeerIds; }, [verifiedPeerIds]);
+
+  useEffect(() => {
+    if (!me?.id) return;
+
+    const s = io('/', { transports: ['websocket'], reconnection: true });
+    socketRef.current = s;
+    setSocket(s);
+
+    s.on('connect', () => {
+      setIsConnected(true);
+      if (meRef.current) {
+        s.emit('peer:join', meRef.current);
+        s.emit('mesh:broadcast', { type: 'sync_invitation', senderId: meRef.current.id });
+        
+        // Flush offline pending messages
+        const pending = messagesRef.current.filter(m => m.isPending);
+        if (pending.length > 0) {
+          toast.info(`Synchronizing ${pending.length} offline transmissions...`);
+          pending.forEach(m => {
+            if (m.type === 'direct') {
+              s.emit('mesh:direct', { 
+                to: m.metadata?.replyToId || '', // This is a simplification, we'd normally store the recipient ID
+                msg: m.content, 
+                replyToId: m.metadata?.replyToId 
+              });
+            } else {
+              s.emit('mesh:broadcast', { ...m, isPending: false });
+            }
+          });
+          setMessages(prev => prev.map(m => m.isPending ? { ...m, isPending: false } : m));
+        }
+      }
+    });
+
+    s.on('disconnect', () => setIsConnected(false));
+
+    s.on('mesh:peers', (updatedPeers: Peer[]) => {
+      const activePeerIds = new Set(updatedPeers.map(p => p.id));
+      
+      setGhostPeers(prev => {
+         const currentPeers = peersRef.current;
+         const disappearedPeers = currentPeers.filter(p => !activePeerIds.has(p.id) && p.id !== meRef.current?.id);
+         return [...prev, ...disappearedPeers]
+           .filter(g => Date.now() - (g.lastSeen || Date.now()) < 120000)
+           .slice(-5);
+      });
+
+      const mappedPeers = updatedPeers
+        .filter(p => p.id !== meRef.current?.id)
+        .map(p => {
+          const m = meRef.current!;
+          const dist = Math.hypot(p.location.x - m.location.x, p.location.y - m.location.y);
+          const rssi = -30 - (dist * 0.8);
+          return { 
+            ...p, 
+            rssi, 
+            isVerified: verifiedPeerIdsRef.current.has(p.id),
+            lastSeen: Date.now()
+          };
+        });
+      setPeers(mappedPeers);
+    });
+
+    s.on('mesh:receive_broadcast', (msg: any) => {
+      if (msg.type === 'sync_invitation' && msg.senderId !== meRef.current?.id) {
+         s.emit('mesh:sync_response', { 
+           to: msg.senderId, 
+           history: messagesRef.current.filter(m => m.type !== 'direct') 
+         });
+         return;
+      }
+      if (msg.type === 'broadcast' || msg.type === 'alert') {
+        processIncoming(msg);
+      }
+    });
+
+    s.on('mesh:receive_sync_response', ({ history }: { history: MeshMessage[] }) => {
+       setMessages(prev => {
+         const combined = [...prev, ...history];
+         const unique = Array.from(new Map(combined.map(m => [m.id, m])).values());
+         return unique.sort((a, b) => a.timestamp - b.timestamp).slice(-500);
+       });
+       toast.success('Mesh History Synced');
+    });
+
+    s.on('mesh:receive_direct', async ({ from, msg, replyToId, isEncrypted, iv, wrappedKey }: { from: string, msg: string, replyToId?: string, isEncrypted?: boolean, iv?: string, wrappedKey?: string }) => {
+      const sender = peersRef.current.find(p => p.id === from);
+      let decryptedContent = msg;
+
+      if (isEncrypted && iv && wrappedKey) {
+        const sharedSecret = sharedSecrets.current.get(from);
+        if (sharedSecret) {
+          try {
+            const ivArray = new Uint8Array(atob(iv).split('').map(c => c.charCodeAt(0)));
+            const encryptedBuffer = new Uint8Array(atob(msg).split('').map(c => c.charCodeAt(0)));
+            const wrappedKeyBuffer = new Uint8Array(atob(wrappedKey).split('').map(c => c.charCodeAt(0)));
+            
+            // Unwrap temporary symmetric key using shared secret
+            const sessionKey = await crypto.subtle.unwrapKey(
+              'jwk',
+              wrappedKeyBuffer,
+              sharedSecret,
+              'AES-GCM',
+              'AES-GCM',
+              true,
+              ['decrypt']
+            );
+
+            // Decrypt message using temporary key
+            const decryptedBuffer = await crypto.subtle.decrypt(
+              { name: 'AES-GCM', iv: ivArray },
+              sessionKey,
+              encryptedBuffer
+            );
+            decryptedContent = new TextDecoder().decode(decryptedBuffer);
+          } catch (e) {
+            console.error("Decryption failed", e);
+            decryptedContent = "[DECRYPTION FAILED: VERIFY HANDSHAKE]";
+          }
+        } else {
+          decryptedContent = "[ENCRYPTED: HANDSHAKE REQUIRED]";
+        }
+      }
+      
+      // Find the message being replied to if it exists in our history
+      const originalMessage = messagesRef.current.find(m => m.id === replyToId);
+
+      const directMsg: MeshMessage = {
+        id: Math.random().toString(36).substr(2, 9),
+        senderId: from,
+        senderName: sender?.name || 'Unknown Peer',
+        content: decryptedContent,
+        timestamp: Date.now(),
+        type: 'direct',
+        hops: 1,
+        hash: '',
+        prevHash: '',
+        metadata: { 
+          isIncoming: true,
+          replyToId,
+          replyToContent: originalMessage?.content,
+          isEncrypted: isEncrypted
+        }
+      };
+      setMessages(prev => {
+        const next = [...prev, directMsg].slice(-500);
+        return next;
+      });
+      toast.info(`Secure DM: ${sender?.name || 'Peer'}`, { description: isEncrypted ? 'E2EE Decrypted' : decryptedContent });
+    });
+
+    return () => { 
+      s.disconnect(); 
+      socketRef.current = null;
+      setSocket(null);
+    };
+  }, [me?.id]); // Only reconnect if identity changes
+
+  const processIncoming = async (msg: MeshMessage) => {
+    const expectedHash = await hashMessage(msg);
+    if (msg.hash !== expectedHash) {
+       setLedgerIntegrity(false);
+       toast.error('Security Warning: Mesh integrity compromised.');
+       return;
+    }
+
+    // Verify Signature if public key is known
+    const sender = peersRef.current.find(p => p.id === msg.senderId);
+    if (sender?.signingKey && msg.signature) {
+      try {
+        const pubKey = await importKey(sender.signingKey, 'signing', 'public');
+        const isValid = await crypto.subtle.verify(
+          { name: 'ECDSA', hash: { name: 'SHA-256' } },
+          pubKey,
+          new Uint8Array(msg.signature.split(',').map(Number)),
+          new TextEncoder().encode(msg.hash)
+        );
+        if (!isValid) {
+          toast.error(`Spoof Detected: Identity mismatch for ${sender.name}`);
+          return;
+        }
+      } catch (e) {
+        console.error("Signature verification error", e);
+      }
+    }
+
+    setMessages(prev => {
+      if (prev.find(m => m.id === msg.id)) return prev;
+      return [...prev, msg].sort((a, b) => a.timestamp - b.timestamp).slice(-500);
+    });
+    if (msg.type === 'alert') toast.error(`ALERT: ${msg.content}`);
+  };
+
+  const broadcast = useCallback(async (content: string, type: MeshMessage['type'] = 'broadcast', metadata?: MeshMessage['metadata']) => {
+    if (!me || !signingKeyPair.current) return;
+    
+    // Ledger Tip Logic: Chain to the latest message
+    const prevHash = messages.length > 0 ? messages[messages.length - 1].hash : GENESIS_HASH;
+    
+    const msgTemplate: Partial<MeshMessage> = {
+      id: Math.random().toString(36).substr(2, 9),
+      senderId: me.id,
+      senderName: me.name,
+      content,
+      timestamp: Date.now(),
+      type,
+      hops: 1,
+      prevHash,
+      metadata,
+      isPending: !socket || !isConnected
+    };
+
+    const hash = await hashMessage(msgTemplate);
+    
+    // Sign the hash
+    const signatureBuffer = await crypto.subtle.sign(
+      { name: 'ECDSA', hash: { name: 'SHA-256' } },
+      signingKeyPair.current.private,
+      new TextEncoder().encode(hash)
+    );
+    const signature = Array.from(new Uint8Array(signatureBuffer)).join(',');
+
+    const finalMsg: MeshMessage = { ...msgTemplate, hash, signature } as MeshMessage;
+
+    setMessages(prev => [...prev, finalMsg].slice(-500));
+    if (socket && isConnected) {
+      socket.emit('mesh:broadcast', finalMsg);
+    } else {
+      toast.warning('Node Offline: Storing signed transmission in queue...');
+    }
+  }, [socket, isConnected, me, messages]);
+
+  const sendDirect = useCallback(async (to: string, content: string, replyTo?: { id: string, content: string }) => {
+    if (!me || !signingKeyPair.current) return;
+    
+    const recipient = peers.find(p => p.id === to);
+    let finalContent = content;
+    let ivB64: string | undefined;
+    let wrappedKeyB64: string | undefined;
+    let encrypted = false;
+
+    // Try Envelope Encryption (AES-GCM session key wrapped with ECDH secret)
+    const sharedSecret = sharedSecrets.current.get(to);
+    if (sharedSecret) {
+      try {
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        
+        // Generate temporary symmetric key
+        const sessionKey = await crypto.subtle.generateKey(
+          { name: 'AES-GCM', length: 256 },
+          true,
+          ['encrypt', 'decrypt']
+        );
+
+        // Encrypt message with temporary key
+        const encryptedBuffer = await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv },
+          sessionKey,
+          new TextEncoder().encode(content)
+        );
+
+        // Wrap temporary key with shared secret
+        const wrappedKeyBuffer = await crypto.subtle.wrapKey(
+          'jwk',
+          sessionKey,
+          sharedSecret,
+          'AES-GCM'
+        );
+
+        finalContent = btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer)));
+        ivB64 = btoa(String.fromCharCode(...iv));
+        wrappedKeyB64 = btoa(String.fromCharCode(...new Uint8Array(wrappedKeyBuffer)));
+        encrypted = true;
+      } catch (e) {
+        console.error("Encryption failed", e);
+      }
+    }
+
+    const directMsgTemplate: Partial<MeshMessage> = {
+      id: Math.random().toString(36).substr(2, 9),
+      senderId: me.id,
+      senderName: 'Me',
+      content: finalContent,
+      timestamp: Date.now(),
+      type: 'direct',
+      hops: 1,
+      hash: '',
+      prevHash: '',
+      isPending: !socket || !isConnected,
+      metadata: {
+         recipientName: recipient?.name || 'Unknown',
+         isIncoming: false,
+         replyToId: replyTo?.id,
+         replyToContent: replyTo?.content,
+         isEncrypted: encrypted,
+         iv: ivB64,
+         wrappedKey: wrappedKeyB64
+      }
+    };
+
+    const directMsg = directMsgTemplate as MeshMessage;
+    setMessages(prev => [...prev, directMsg].slice(-500));
+    
+    if (socket && isConnected) {
+      socket.emit('mesh:direct', { 
+        to, 
+        msg: finalContent, 
+        replyToId: replyTo?.id, 
+        isEncrypted: encrypted, 
+        iv: ivB64,
+        wrappedKey: wrappedKeyB64
+      });
+    } else {
+      toast.warning('Node Offline: Secure Tactical DM queued...');
+    }
+  }, [socket, isConnected, me, peers]);
+
+  const verifyPeer = useCallback(async (idOrData: string | any) => {
+    let id = typeof idOrData === 'string' ? idOrData : idOrData.id;
+    let peerData = typeof idOrData === 'object' ? idOrData : null;
+
+    if (peerData?.signingKey && peerData?.encryptionKey) {
+       // Out-of-band QR Handshake: Derive Shared Secret immediately
+       try {
+         const peerEncKey = await importKey(peerData.encryptionKey, 'encryption', 'public');
+         const sharedSecret = await crypto.subtle.deriveKey(
+           { name: 'ECDH', public: peerEncKey },
+           encryptionKeyPair.current!.private,
+           { name: 'AES-GCM', length: 256 },
+           true,
+           ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey']
+         );
+         sharedSecrets.current.set(id, sharedSecret);
+
+         // Persist the keys for this peer
+         setVerifiedPeerKeys(prev => ({
+           ...prev,
+           [id]: { signingKey: peerData.signingKey, encryptionKey: peerData.encryptionKey }
+         }));
+
+         toast.success(`Secure Tactical Channel Established with ${peerData.name}`);
+       } catch (e) {
+         console.error("Shared secret derivation failed", e);
+       }
+    }
+
+    setVerifiedPeerIds(prev => {
+       const next = new Set(prev);
+       next.add(id);
+       return next;
+    });
+    // Also update peers list with verified status and keys if provided
+    setPeers(prev => prev.map(p => p.id === id ? { 
+      ...p, 
+      isVerified: true, 
+      verifiedAt: Date.now(),
+      signingKey: peerData?.signingKey || p.signingKey,
+      encryptionKey: peerData?.encryptionKey || p.encryptionKey
+    } : p));
+    toast.success('Peer Identity Verified');
+  }, []);
+
+  const memoedValue = useMemo(() => ({ 
+    socket, me, peers, ghostPeers, messages, broadcast, sendDirect, verifyPeer, 
+    isConnected, ledgerIntegrity, isStealthMode, setStealthMode,
+    selectedMapItem, setSelectedMapItem
+  }), [
+    socket, me, peers, ghostPeers, messages, broadcast, sendDirect, verifyPeer, 
+    isConnected, ledgerIntegrity, isStealthMode, selectedMapItem
+  ]);
+
+  return (
+    <MeshContext.Provider value={memoedValue}>
+      <div className={isStealthMode ? 'stealth-filter h-full flex flex-col' : 'h-full flex flex-col'}>
+        {!isConnected && (
+          <div className="absolute top-0 left-0 right-0 z-[100] h-1 bg-red-600 animate-pulse" />
+        )}
+        {children}
+      </div>
+    </MeshContext.Provider>
+  );
+};
+
+export const useMesh = () => {
+  const context = useContext(MeshContext);
+  if (context === undefined) {
+    throw new Error('useMesh must be used within a MeshProvider');
+  }
+  return context;
+};

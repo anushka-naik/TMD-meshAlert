@@ -1,0 +1,6 @@
+{
+  "name": "Beacon Mesh: Offline Emergency Comms",
+  "description": "A high-resilience, peer-to-peer mesh messaging prototype designed for internet shutdowns. Features simulated local peer discovery, broadcast alerts, and offline map-based safety zones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
