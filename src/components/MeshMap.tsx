@@ -3,7 +3,6 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useMesh } from '@/lib/MeshContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Battery, Signal, ShieldCheck, MapPin, Info } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { MapItem } from '@/lib/mesh-types';
 import { toast } from 'sonner';
 
@@ -101,34 +100,29 @@ export const MeshMap = () => {
 
   const getResourceColor = (type: string) => {
     switch(type) {
-      case 'water': return '#3b82f6';
-      case 'food': return '#f59e0b';
-      case 'medical': return '#ef4444';
-      case 'shelter': return '#a855f7';
-      default: return '#10b981';
+      case 'water': return '#64d2ff';
+      case 'food': return '#ff9f0a';
+      case 'medical': return '#ff453a';
+      case 'shelter': return '#bf5af2';
+      default: return '#30d158';
     }
   };
 
   return (
-    <div className="relative w-full h-full bg-zinc-950 border border-white/5 rounded-xl overflow-hidden pattern-grid group/map">
-      <div className="absolute inset-0 bg-radial-gradient from-emerald-500/5 to-transparent opacity-50 pointer-events-none" />
-      
-      {/* Top Left Labels */}
+    <div className="relative w-full h-full bg-[#0e0e10] ring-1 ring-inset ring-white/[0.08] rounded-2xl overflow-hidden pattern-grid group/map">
       <div className="absolute top-4 left-4 z-10 pointer-events-none">
-        <h3 className="text-[10px] font-mono text-emerald-500/60 uppercase font-bold tracking-[0.2em]">Local Mesh Scan</h3>
-        <p className="text-[9px] font-mono text-zinc-600 mt-0.5 italic">Range: 250m simulated</p>
+        <h3 className="text-[15px] font-semibold text-zinc-100">Mesh</h3>
+        <p className="text-xs text-zinc-500 mt-0.5">{activeNodes.length} {activeNodes.length === 1 ? 'device' : 'devices'} in range</p>
       </div>
 
       <div className="absolute top-4 right-4 z-20 flex gap-2">
         {selectedMapItem && (
-          <Button 
-            variant="outline" 
-            size="xs" 
+          <button
             onClick={resetView}
-            className="h-6 bg-zinc-900/80 border-white/10 text-[9px] font-mono uppercase tracking-tighter"
+            className="h-7 px-3 rounded-full material text-xs font-medium text-zinc-200 hover:bg-zinc-800"
           >
-            Reset View
-          </Button>
+            Reset view
+          </button>
         )}
       </div>
 
@@ -141,7 +135,7 @@ export const MeshMap = () => {
         }}
         transition={{ type: "spring", damping: 20, stiffness: 100 }}
       >
-        <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <svg className="w-full h-full" viewBox="22 22 56 56" preserveAspectRatio="xMidYMid meet">
           {/* LOS Indicators between all active nodes */}
           {activeNodes.map((node, i) => (
             activeNodes.slice(i + 1).map((node2) => {
@@ -161,15 +155,15 @@ export const MeshMap = () => {
                       y1={node.location.y}
                       x2={node2.location.x}
                       y2={node2.location.y}
-                      stroke={node.id === me?.id || node2.id === me?.id ? "rgba(59, 130, 246, 0.3)" : `rgba(16, 185, 129, ${opacity})`}
+                      stroke={node.id === me?.id || node2.id === me?.id ? `rgba(10, 132, 255, ${opacity + 0.15})` : `rgba(255, 255, 255, ${opacity * 0.6})`}
                       strokeWidth={strokeWidth}
                       strokeDasharray={strength < 0.3 ? "0.5 0.5" : "none"}
                     />
                     {/* Animated data pulse on strong connections */}
                     {strength > 0.6 && (
                       <motion.circle
-                        r="0.2"
-                        fill="#10b981"
+                        r="0.25"
+                        fill="#64d2ff"
                         animate={{
                           cx: [node.location.x, node2.location.x],
                           cy: [node.location.y, node2.location.y]
@@ -195,8 +189,8 @@ export const MeshMap = () => {
                 cx={cluster.center.x}
                 cy={cluster.center.y}
                 r="4"
-                fill="rgba(16, 185, 129, 0.05)"
-                stroke="rgba(16, 185, 129, 0.2)"
+                fill="rgba(255, 255, 255, 0.03)"
+                stroke="rgba(255, 255, 255, 0.15)"
                 strokeWidth="0.2"
                 strokeDasharray="1 1"
                 animate={{ rotate: 360 }}
@@ -206,14 +200,14 @@ export const MeshMap = () => {
                 cx={cluster.center.x}
                 cy={cluster.center.y}
                 r="2.5"
-                fill="rgba(24, 24, 27, 0.8)"
-                stroke="rgba(16, 185, 129, 0.4)"
+                fill="rgba(44, 44, 46, 0.95)"
+                stroke="rgba(255, 255, 255, 0.25)"
                 strokeWidth="0.3"
               />
               <text
                 x={cluster.center.x}
                 y={cluster.center.y + 0.5}
-                className="text-[2px] font-mono fill-emerald-500 font-bold"
+                className="text-[2px] fill-zinc-100 font-semibold"
                 textAnchor="middle"
               >
                 {cluster.count}
@@ -221,10 +215,10 @@ export const MeshMap = () => {
               <text
                 x={cluster.center.x}
                 y={cluster.center.y + 3.5}
-                className="text-[1.5px] font-mono fill-zinc-600 uppercase text-center opacity-0 group-hover/cluster:opacity-100 transition-opacity"
+                className="text-[1.5px] fill-zinc-600 text-center opacity-0 group-hover/cluster:opacity-100 transition-opacity"
                 textAnchor="middle"
               >
-                Sync Group
+                Group
               </text>
               
               {/* Show lines to individual nodes in the cluster on hover */}
@@ -235,7 +229,7 @@ export const MeshMap = () => {
                   y1={cluster.center.y}
                   x2={n.location.x}
                   y2={n.location.y}
-                  stroke="rgba(16, 185, 129, 0.2)"
+                  stroke="rgba(255, 255, 255, 0.2)"
                   strokeWidth="0.1"
                   className="opacity-0 group-hover/cluster:opacity-100 transition-opacity"
                 />
@@ -260,22 +254,24 @@ export const MeshMap = () => {
                 cx={node.location.x}
                 cy={node.location.y}
                 r={selectedMapItem?.id === node.id ? "3" : "2"}
-                fill={node.id === me?.id ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.1)'}
+                fill={node.id === me?.id ? 'rgba(10, 132, 255, 0.2)' : node.isVerified ? 'rgba(48, 209, 88, 0.15)' : 'rgba(255, 255, 255, 0.08)'}
                 className={selectedMapItem?.id === node.id ? "" : "animate-pulse"}
               />
               <circle
                 cx={node.location.x}
                 cy={node.location.y}
-                r="0.5"
-                fill={node.id === me?.id ? '#10b981' : (node.isVerified ? '#3b82f6' : '#52525b')}
+                r={node.id === me?.id ? "0.9" : "0.7"}
+                fill={node.id === me?.id ? '#0a84ff' : (node.isVerified ? '#30d158' : '#8e8e93')}
+                stroke="#fff"
+                strokeWidth={node.id === me?.id ? "0.3" : "0.15"}
               />
               {node.id !== me?.id && (
                 <text
-                  x={node.location.x + 1}
-                  y={node.location.y}
-                  className="text-[2px] font-mono fill-zinc-600 pointer-events-none"
+                  x={node.location.x + 1.8}
+                  y={node.location.y + 0.6}
+                  className="text-[1.8px] fill-zinc-500 pointer-events-none"
                 >
-                  {Math.round(node.rssi || 0)}dBm
+                  {node.name}
                 </text>
               )}
             </g>
@@ -291,7 +287,7 @@ export const MeshMap = () => {
                 id: ghost.id,
                 type: 'ghost',
                 location: ghost.location,
-                label: `LAST SEEN: ${ghost.name}`,
+                label: ghost.name,
                 details: ghost
               })}
             >
@@ -318,27 +314,26 @@ export const MeshMap = () => {
                 id: res.id,
                 type: 'resource',
                 location: res.location,
-                label: `${res.type?.toUpperCase()} POINT`,
+                label: `${res.type?.[0].toUpperCase()}${res.type?.slice(1)}`,
                 details: res
               })}
             >
-              <rect 
-                x={res.location.x - 1} 
-                y={res.location.y - 1} 
-                width={selectedMapItem?.id === res.id ? "3" : "2"}
-                height={selectedMapItem?.id === res.id ? "3" : "2"}
-                rx="0.5"
+              <circle
+                cx={res.location.x - 2.6}
+                cy={res.location.y - 2.6}
+                r={selectedMapItem?.id === res.id ? "1.3" : "1"}
                 fill={getResourceColor(res.type || '')}
-                className={selectedMapItem?.id === res.id ? "" : "animate-bounce"}
-                style={selectedMapItem?.id === res.id ? {} : { animationDuration: '3s' }}
+                stroke="#0e0e10"
+                strokeWidth="0.3"
               />
               <text
-                x={res.location.x - 1}
-                y={res.location.y - 1.5}
-                className="text-[2px] font-mono uppercase font-bold pointer-events-none"
+                x={res.location.x - 4}
+                y={res.location.y - 2.1}
+                textAnchor="end"
+                className="text-[1.5px] font-semibold pointer-events-none capitalize"
                 fill={getResourceColor(res.type || '')}
               >
-                {res.id === selectedMapItem?.id ? '' : res.type}
+                {res.type}
               </text>
             </g>
           ))}
@@ -352,118 +347,78 @@ export const MeshMap = () => {
             initial={{ opacity: 0, scale: 0.9, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 10 }}
-            className="absolute bottom-6 left-1/2 -translate-x-1/2 w-64 bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-lg p-3 shadow-2xl z-30"
+            className="absolute bottom-5 left-1/2 -translate-x-1/2 w-72 material rounded-2xl p-4 shadow-2xl z-30"
           >
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex items-center gap-2">
-                {selectedMapItem.type === 'peer' && <ShieldCheck className={`w-4 h-4 ${selectedMapItem.details.isVerified ? 'text-blue-400' : 'text-zinc-500'}`} />}
-                {selectedMapItem.type === 'resource' && <MapPin className="w-4 h-4 text-emerald-400" />}
-                {selectedMapItem.type === 'ghost' && <Info className="w-4 h-4 text-zinc-500" />}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  selectedMapItem.type === 'resource' ? 'bg-emerald-500/15' : selectedMapItem.type === 'ghost' ? 'bg-white/[0.06]' : selectedMapItem.id === me?.id ? 'bg-blue-500/15' : 'bg-white/[0.08]'
+                }`}>
+                  {selectedMapItem.type === 'peer' && <ShieldCheck className={`w-4 h-4 ${selectedMapItem.details.isVerified ? 'text-emerald-400' : selectedMapItem.id === me?.id ? 'text-blue-400' : 'text-zinc-400'}`} />}
+                  {selectedMapItem.type === 'resource' && <MapPin className="w-4 h-4 text-emerald-400" />}
+                  {selectedMapItem.type === 'ghost' && <Info className="w-4 h-4 text-zinc-500" />}
+                </div>
                 <div>
-                  <div className="flex items-center gap-1.5 leading-none">
-                    <h4 className="text-xs font-mono font-bold text-zinc-100 uppercase">
-                      {selectedMapItem.label}
-                    </h4>
-                    {selectedMapItem.type === 'peer' && selectedMapItem.details.isVerified && (
-                      <ShieldCheck className="w-3 h-3 text-blue-400" />
-                    )}
-                  </div>
-                  <p className="text-[9px] font-mono text-zinc-500 mt-1 uppercase">
-                    ID: {selectedMapItem.id.slice(0, 8)}
+                  <h4 className="text-[14px] font-semibold text-zinc-100 leading-tight">
+                    {selectedMapItem.id === me?.id ? `${selectedMapItem.label} (you)` : selectedMapItem.label}
+                  </h4>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    {selectedMapItem.type === 'peer' && (selectedMapItem.details.isVerified ? 'Verified peer' : selectedMapItem.id === me?.id ? 'This device' : 'Unverified peer')}
+                    {selectedMapItem.type === 'resource' && `Reported by ${selectedMapItem.details.sender}`}
+                    {selectedMapItem.type === 'ghost' && 'Out of range'}
                   </p>
                 </div>
               </div>
-              <button onClick={resetView} className="p-1 hover:bg-white/5 rounded">
-                <X className="w-3 h-3 text-zinc-500" />
+              <button onClick={resetView} className="w-6 h-6 rounded-full bg-white/[0.08] hover:bg-white/15 flex items-center justify-center">
+                <X className="w-3 h-3 text-zinc-400" />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-white/5">
-              {selectedMapItem.type === 'peer' && (
-                <>
-                  <div className="flex flex-col">
-                    <span className="text-[8px] font-mono text-zinc-600 uppercase">Battery</span>
-                    <div className="flex items-center gap-1">
-                      <Battery className="w-2.5 h-2.5 text-emerald-500" />
-                      <span className="text-[10px] font-mono text-zinc-300">{Math.round(selectedMapItem.details.battery)}%</span>
-                    </div>
+            {selectedMapItem.type === 'peer' && (
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <div className="rounded-xl bg-white/[0.05] px-3 py-2">
+                  <span className="text-[11px] text-zinc-500">Battery</span>
+                  <div className="flex items-center gap-1 text-[13px] text-zinc-200 tabular-nums">
+                    <Battery className="w-3.5 h-3.5 text-emerald-500" />
+                    {Math.round(selectedMapItem.details.battery)}%
                   </div>
-                  <div className="flex flex-col">
-                    <span className="text-[8px] font-mono text-zinc-600 uppercase">Signal</span>
-                    <div className="flex items-center gap-1">
-                      <Signal className="w-2.5 h-2.5 text-blue-500" />
-                      <span className="text-[10px] font-mono text-zinc-300">{Math.round(selectedMapItem.details.rssi || 0)} dBm</span>
-                    </div>
+                </div>
+                <div className="rounded-xl bg-white/[0.05] px-3 py-2">
+                  <span className="text-[11px] text-zinc-500">Signal</span>
+                  <div className="flex items-center gap-1 text-[13px] text-zinc-200 tabular-nums">
+                    <Signal className="w-3.5 h-3.5 text-blue-500" />
+                    {Math.round(selectedMapItem.details.rssi || 0)} dBm
                   </div>
-                </>
-              )}
-              {selectedMapItem.type === 'resource' && (
-                <>
-                  <div className="flex flex-col">
-                    <span className="text-[8px] font-mono text-zinc-600 uppercase">Type</span>
-                    <span className="text-[10px] font-mono text-emerald-400 uppercase font-bold">{selectedMapItem.details.type}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[8px] font-mono text-zinc-600 uppercase">Reported By</span>
-                    <span className="text-[10px] font-mono text-zinc-300">{selectedMapItem.details.sender}</span>
-                  </div>
-                </>
-              )}
-              {selectedMapItem.type === 'ghost' && (
-                <>
-                  <div className="flex flex-col">
-                    <span className="text-[8px] font-mono text-zinc-600 uppercase">Status</span>
-                    <span className="text-[10px] font-mono text-red-500 uppercase font-bold">Signal Lost</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[8px] font-mono text-zinc-600 uppercase">Last Contact</span>
-                    <span className="text-[10px] font-mono text-zinc-300">{new Date(selectedMapItem.details.lastSeen).toLocaleTimeString()}</span>
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="mt-3 flex justify-between items-center">
-               <span className="text-[8px] font-mono text-zinc-700 uppercase tracking-tighter">
-                COORD: {Math.round(selectedMapItem.location.x)}, {Math.round(selectedMapItem.location.y)}
-               </span>
-               {selectedMapItem.type === 'peer' && selectedMapItem.id !== me?.id && (
-                 <Button 
-                   variant="secondary" 
-                   size="xs" 
-                   className="h-6 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 font-mono text-[9px] uppercase font-bold"
-                   onClick={() => {
-                     // Since we can't easily open the Dialog from here without refs, 
-                     // we can at least provide a hint or just rely on the Peers list.
-                     // However, to satisfy "chat box option is gone", we should ensure visibility.
-                     toast.info("Secure Channel Available", {
-                       description: `Select ${selectedMapItem.label} in the 'Nearby Nodes' tab to transmit data.`
-                     });
-                   }}
-                 >
-                   Open Secure Link
-                 </Button>
-               )}
-            </div>
+                </div>
+              </div>
+            )}
+            {selectedMapItem.type === 'ghost' && (
+              <p className="mt-3 text-xs text-zinc-400">
+                Last seen {new Date(selectedMapItem.details.lastSeen).toLocaleTimeString()}
+              </p>
+            )}
+            {selectedMapItem.type === 'peer' && selectedMapItem.id !== me?.id && (
+              <button
+                className="mt-3 w-full h-8 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-[13px] font-medium transition-colors"
+                onClick={() => {
+                  toast.info("Message from the Nearby tab", {
+                    description: `Open Nearby and tap ${selectedMapItem.label} to send a direct message.`
+                  });
+                }}
+              >
+                Message
+              </button>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Peer Overlays */}
-      <div className="absolute bottom-4 right-4 text-right space-y-1 pointer-events-none opacity-40">
-        {peers.slice(0, 3).map(p => (
-           <div key={p.id} className="text-[9px] font-mono text-zinc-500">
-             NODE_{p.id.toUpperCase()} CONNECTED
-           </div>
-        ))}
+      {/* Legend */}
+      <div className="absolute bottom-4 left-4 flex items-center gap-3 text-[11px] text-zinc-500 pointer-events-none">
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500" />You</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" />Verified</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-zinc-500" />Peer</span>
       </div>
-
-      {/* Decorative scanning line */}
-      <motion.div 
-        initial={{ top: "-10%" }}
-        animate={{ top: "110%" }}
-        transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-        className="absolute left-0 right-0 h-[1px] bg-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.3)] z-0 pointer-events-none"
-      />
 
       {/* Connection Failure Overlay */}
       <AnimatePresence>
@@ -472,13 +427,13 @@ export const MeshMap = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-red-950/20 backdrop-blur-[1px] pointer-events-none"
+            className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/30 backdrop-blur-[2px] pointer-events-none"
           >
-            <div className="flex flex-col items-center gap-2 p-4 border border-red-500/30 bg-black/60 rounded-lg shadow-[0_0_20px_rgba(239,68,68,0.2)]">
-              <Signal className="w-8 h-8 text-red-500 animate-pulse" />
+            <div className="flex flex-col items-center gap-2 px-6 py-5 material rounded-2xl">
+              <Signal className="w-7 h-7 text-red-500 animate-pulse" />
               <div className="text-center">
-                <h3 className="text-xs font-mono font-bold text-red-400 uppercase tracking-widest">Signal Lost</h3>
-                <p className="text-[9px] font-mono text-zinc-500 mt-1 uppercase">Attempting Mesh Re-entry...</p>
+                <h3 className="text-[14px] font-semibold text-zinc-100">Hub unreachable</h3>
+                <p className="text-xs text-zinc-500 mt-0.5">Direct peer links stay open. Reconnecting…</p>
               </div>
             </div>
           </motion.div>

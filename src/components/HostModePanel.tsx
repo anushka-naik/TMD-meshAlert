@@ -58,98 +58,84 @@ export const HostModePanel: React.FC = () => {
   const joinUrl = selectedIp ? `http://${selectedIp}:${netInfo?.port ?? 3000}` : null;
 
   return (
-    <div className="p-4 bg-zinc-950/70 border border-emerald-500/20 rounded-xl space-y-4">
+    <div className="p-4 material rounded-2xl space-y-3">
       <div className="flex items-center gap-2">
-        <Server className="w-3.5 h-3.5 text-emerald-500" />
-        <h3 className="text-[10px] font-mono font-bold text-emerald-500 uppercase tracking-widest">
-          Host Mode
-        </h3>
+        <Server className="w-4 h-4 text-blue-500" />
+        <h3 className="text-[13px] font-semibold text-zinc-100">Host this mesh</h3>
       </div>
 
       {loading && (
-        <p className="text-[10px] font-mono text-zinc-500 animate-pulse">Scanning network interfaces…</p>
+        <p className="text-xs text-zinc-500 animate-pulse">Looking for network interfaces…</p>
       )}
 
       {!loading && (!netInfo || netInfo.ips.length === 0) && (
         <div className="space-y-1">
-          <p className="text-[10px] font-mono text-zinc-400">
-            No LAN addresses found.
-          </p>
-          <p className="text-[9px] font-mono text-zinc-600 leading-relaxed">
-            Connect to a WiFi network or create a hotspot, then reload this panel.
+          <p className="text-xs text-zinc-300">No local network found.</p>
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            Join a Wi-Fi network or start a hotspot, then reload.
           </p>
         </div>
       )}
 
       {!loading && netInfo && netInfo.ips.length > 0 && (
         <>
-          <p className="text-[9px] font-mono text-zinc-500 leading-relaxed">
-            Share an address below with devices on the same WiFi. They scan the QR or type the URL — no internet needed.
-          </p>
-
-          {/* IP list */}
-          <div className="space-y-1.5">
-            {netInfo.ips.map(ip => {
-              const url = `http://${ip}:${netInfo.port}`;
-              const isSelected = ip === selectedIp;
-              return (
-                <button
-                  key={ip}
-                  onClick={() => setSelectedIp(ip)}
-                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg border text-left transition-colors ${
-                    isSelected
-                      ? 'border-emerald-500/40 bg-emerald-500/10'
-                      : 'border-white/5 bg-white/5 hover:border-white/10'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Wifi className={`w-3 h-3 shrink-0 ${isSelected ? 'text-emerald-400' : 'text-zinc-500'}`} />
-                    <span className={`text-[10px] font-mono truncate ${isSelected ? 'text-emerald-300' : 'text-zinc-400'}`}>
-                      {url}
-                    </span>
-                  </div>
-                  <button
-                    onClick={e => { e.stopPropagation(); copyIp(ip); }}
-                    className="shrink-0 ml-2 text-zinc-500 hover:text-zinc-300 transition-colors"
-                    title="Copy URL"
-                  >
-                    {copiedIp === ip
-                      ? <CheckCheck className="w-3 h-3 text-emerald-400" />
-                      : <Copy className="w-3 h-3" />
-                    }
-                  </button>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* QR Code */}
-          {joinUrl && (
-            <div className="flex flex-col items-center gap-2 pt-1">
-              <div className="p-2 bg-white rounded-lg">
+          <div className="flex items-center gap-3">
+            {joinUrl && (
+              <div className="p-1.5 bg-white rounded-xl shrink-0">
                 <QRCodeSVG
                   value={joinUrl}
-                  size={120}
+                  size={84}
                   level="M"
                   bgColor="#ffffff"
                   fgColor="#000000"
                 />
               </div>
-              <p className="text-[9px] font-mono text-zinc-600 text-center">
-                Scan to join mesh
-              </p>
-            </div>
-          )}
-
-          {/* mDNS hint */}
-          <div className="flex items-start gap-1.5 pt-1 border-t border-white/5">
-            <Radio className="w-3 h-3 text-zinc-600 shrink-0 mt-0.5" />
-            <p className="text-[9px] font-mono text-zinc-600 leading-relaxed">
-              Also discoverable as{' '}
-              <span className="text-zinc-400">beacon-mesh.local:{netInfo.port}</span>{' '}
-              on macOS / iOS (mDNS).
+            )}
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Anyone on the same Wi-Fi can scan this to join. No internet needed.
             </p>
           </div>
+
+          {/* IP list */}
+          <div className="space-y-1">
+            {netInfo.ips.map(ip => {
+              const url = `http://${ip}:${netInfo.port}`;
+              const isSelected = ip === selectedIp;
+              return (
+                <div
+                  key={ip}
+                  role="button"
+                  onClick={() => setSelectedIp(ip)}
+                  className={`w-full flex items-center justify-between px-3 h-8 rounded-full text-left transition-colors cursor-pointer ${
+                    isSelected ? 'bg-blue-500/15' : 'bg-white/[0.05] hover:bg-white/[0.08]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Wifi className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-400' : 'text-zinc-500'}`} />
+                    <span className={`text-xs font-mono truncate ${isSelected ? 'text-blue-300' : 'text-zinc-400'}`}>
+                      {url}
+                    </span>
+                  </div>
+                  <button
+                    onClick={e => { e.stopPropagation(); copyIp(ip); }}
+                    className="shrink-0 ml-2 text-zinc-500 hover:text-zinc-200 transition-colors"
+                    title="Copy URL"
+                  >
+                    {copiedIp === ip
+                      ? <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      : <Copy className="w-3.5 h-3.5" />
+                    }
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* mDNS hint */}
+          <p className="text-[11px] text-zinc-500 leading-relaxed flex items-center gap-1.5">
+            <Radio className="w-3 h-3 shrink-0" />
+            <span>Also at <span className="text-zinc-300">beacon-mesh.local:{netInfo.port}</span></span>
+          </p>
         </>
       )}
     </div>
