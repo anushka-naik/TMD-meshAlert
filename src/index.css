@@ -1,17 +1,69 @@
 @import "tailwindcss";
 
+/* Apple system palette (dark appearance) mapped onto the Tailwind tokens the components use */
+@theme {
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  --color-emerald-300: #7ee2a0;
+  --color-emerald-400: #4cd67a;
+  --color-emerald-500: #30d158;
+  --color-emerald-600: #28b04a;
+  --color-emerald-700: #208a3b;
+
+  --color-blue-300: #82bfff;
+  --color-blue-400: #409cff;
+  --color-blue-500: #0a84ff;
+  --color-blue-600: #0071e3;
+  --color-blue-700: #005bb8;
+
+  --color-red-300: #ff9a93;
+  --color-red-400: #ff6961;
+  --color-red-500: #ff453a;
+  --color-red-600: #e5352b;
+  --color-red-700: #c22a21;
+  --color-red-950: #2a0f0d;
+
+  --color-rose-400: #ff6482;
+  --color-rose-500: #ff375f;
+  --color-amber-400: #ffb340;
+  --color-amber-500: #ff9f0a;
+  --color-purple-400: #da8fff;
+  --color-purple-500: #bf5af2;
+  --color-cyan-400: #70d7ff;
+  --color-cyan-500: #64d2ff;
+
+  --color-zinc-100: #f2f2f7;
+  --color-zinc-200: #e5e5ea;
+  --color-zinc-300: #d1d1d6;
+  --color-zinc-400: #aeaeb2;
+  --color-zinc-500: #8e8e93;
+  --color-zinc-600: #636366;
+  --color-zinc-700: #48484a;
+  --color-zinc-800: #2c2c2e;
+  --color-zinc-900: #1c1c1e;
+  --color-zinc-950: #141416;
+}
+
 @layer base {
   body {
-    @apply bg-black text-zinc-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200 overflow-hidden;
+    @apply bg-black text-zinc-100 antialiased selection:bg-blue-500/30 overflow-hidden;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "tnum" 0;
   }
 }
 
 @layer utilities {
   .pattern-grid {
-    background-image: 
-      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-    background-size: 20px 20px;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  /* Frosted panel, like macOS sidebars and sheets */
+  .material {
+    background: rgba(28, 28, 30, 0.72);
+    backdrop-filter: saturate(180%) blur(24px);
+    -webkit-backdrop-filter: saturate(180%) blur(24px);
+    border: 0.5px solid rgba(255, 255, 255, 0.1);
   }
 
   .bg-radial-gradient {
@@ -42,7 +94,7 @@
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Inter', sans-serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -84,30 +136,30 @@
 }
 
 :root {
-    --background: oklch(0.145 0 0);
+    --background: #000000;
     --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
+    --card: #1c1c1e;
     --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
+    --popover: #2c2c2e;
     --popover-foreground: oklch(0.985 0 0);
     --primary: oklch(0.922 0 0);
     --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
+    --secondary: #2c2c2e;
     --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
+    --muted: #2c2c2e;
+    --muted-foreground: #8e8e93;
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
+    --destructive: #ff453a;
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
+    --ring: #0a84ff;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --radius: 0.5rem;
+    --radius: 0.625rem;
     --sidebar: oklch(0.205 0 0);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.488 0.243 264.376);
